@@ -70,22 +70,15 @@ function activatePlayerButton(player_id) {
 
 function activateButton(text, hash) {
   const id = `btn_${hash}`;
-  $('.btn-primary').each((index, button) => button.className = "btn btn-outline-primary");
-  const button = $(`#${id}`)[0] || createButton(text, hash);
-  button.className = "btn btn-primary";
+  $('.btn-primary').removeClass('btn-primary').addClass('btn-outline-primary');
+  const button = $(`#${id}`)[0] || createButton(text, hash)[0];
+  $(button).addClass("btn-primary").removeClass('btn-outline-primary');
 }
 
 function createButton(text, hash) {
-  const container = document.getElementById("button-container");
-  const button = document.createElement("button");
-  button.setAttribute("id", "btn_" + hash);
-  button.className = "btn btn-outline-primary";
-  button.setAttribute("onclick", "window.location.hash='" + hash + "'");
-  button.setAttribute("title", "#" + hash);
-
-  const buttonText = document.createTextNode(text);
-  button.appendChild(buttonText);
-  container.appendChild(button);
+  const id = "btn_" + hash;
+  const button = $(`<button class="btn btn-primary" id="${id}">${text}</button>`).on('click', () => window.location.hash=hash)
+  $("#button-container").append(button)
   return button;
 }
 
@@ -97,17 +90,15 @@ function readBookmarks() {
 }
 
 function createBookmark(bookmark) {
+  const bookmarks = readBookmarks();
   const i = document.createElement("i");
-  i.setAttribute("id", "bookmark_" + bookmark);
+  const id = "bookmark_" + bookmark;
+  const className = bookmarks.includes(bookmark) ? "bi-bookmark-star" : "bi-bookmark";
+  i.setAttribute("id", id);
   i.setAttribute("role", "img");
   i.setAttribute("aria-label", "Bookmark");
   i.setAttribute("onclick", "toggleBookmark('" + bookmark + "');");
-  const bookmarks = readBookmarks();
-  if (bookmarks.includes(bookmark)) {
-    i.className = "bi bi-bookmark-star";
-  } else {
-    i.className = "bi bi-bookmark";
-  }
+  i.className = `bi ${className}`;
   return i;
 }
 
@@ -149,11 +140,11 @@ function loadBookmarks() {
     if (document.getElementById("btn_" + bookmark)) continue;
     if (!isNaN(parseInt(bookmark)) && Object.keys(user_ids).includes(bookmark)) {
       const player_name = playerName(bookmark);
-      const button = createButton(player_name, bookmark);
+      const button = createButton(player_name, bookmark)[0];
       container.appendChild(button);
     } else if (Object.keys(levels).includes(bookmark)) {
       const level_name = levelName(bookmark);
-      const button = createButton(level_name, bookmark);
+      const button = createButton(level_name, bookmark)[0];
       container.appendChild(button);
     } else {
       // console.log("Ignoring unrecognized bookmark: " + bookmark);
