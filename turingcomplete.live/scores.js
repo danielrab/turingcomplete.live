@@ -3,15 +3,11 @@ const levels = {};
 const metadata = {};
 let load_complete = false;
 let viewing_cached_data = false;
-let charts_initialized = false;
 
 window.addEventListener("hashchange", loadHashPage);
 window.onload = refreshApiData;
 google.charts.load("current", {
   packages: ["corechart"]
-});
-google.charts.setOnLoadCallback(function() {
-  charts_initialized = true;
 });
 
 // ---------------------------------------------------------
