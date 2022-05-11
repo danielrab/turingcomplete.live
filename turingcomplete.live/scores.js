@@ -69,26 +69,14 @@ function activatePlayerButton(player_id) {
 }
 
 function activateButton(text, hash) {
-  const container = document.getElementById("button-container");
-  let button = null;
-  for (const c in container.children) {
-    const e = container.children[c];
-    if (e.textContent == text) {
-      button = e;
-    } else if (e.id != "btn_refresh") {
-      e.className = "btn btn-outline-primary";
-    }
-  }
-
-  if (button == null) {
-    // Create a new button
-    button = createButton(text, hash);
-    container.appendChild(button);
-  }
+  const id = `btn_${hash}`;
+  $('.btn-primary').each((index, button) => button.className = "btn btn-outline-primary");
+  const button = $(`#${id}`)[0] || createButton(text, hash);
   button.className = "btn btn-primary";
 }
 
 function createButton(text, hash) {
+  const container = document.getElementById("button-container");
   const button = document.createElement("button");
   button.setAttribute("id", "btn_" + hash);
   button.className = "btn btn-outline-primary";
@@ -97,6 +85,7 @@ function createButton(text, hash) {
 
   const buttonText = document.createTextNode(text);
   button.appendChild(buttonText);
+  container.appendChild(button);
   return button;
 }
 
