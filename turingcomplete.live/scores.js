@@ -83,7 +83,7 @@ function createButton(text, hash) {
 
 // ---------------------------------------------------------
 function readBookmarks() {
-  let bookmarks = localStorage.getItem("bookmarks") || "flood_predictor;6;5729";
+  let bookmarks = localStorage.getItem("bookmarks") || "flood_predictor;6";
   bookmarks = bookmarks?.split(/;/) || [];
   return bookmarks.filter(e => e);
 }
