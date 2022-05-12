@@ -304,13 +304,13 @@ function handleUsernames(data) {
 }
 
 function handleScores(data) {
-  // Server scores (user_id, level_id, nand, delay, tick, score_type, version)
+  // Server scores (user_id, level_id, gate, delay, tick, score_type, version)
   let scores_count = 0;
   for (const match of data.matchAll(/\b(\d+),(\w+),(\d+),(\d+),(\d+),(\d+),(\d+)(\n|$)/g)) {
     scores_count++;
     const user_id = match[1];
     const level_id = match[2];
-    const nand = parseInt(match[3]);
+    const gate = parseInt(match[3]);
     const delay = parseInt(match[4]);
     const tick = parseInt(match[5]);
     const score_type = parseInt(match[6]);
@@ -322,10 +322,10 @@ function handleScores(data) {
       levels[level_id][score_type] = {};
     }
     levels[level_id][score_type][user_id] = {
-      nand: nand,
+      gate: gate,
       delay: delay,
       tick: tick,
-      sum: nand + delay + tick,
+      sum: gate + delay + tick,
       version: version,
     };
   }
@@ -369,7 +369,7 @@ function showLevels() {
     "Median",
   ];
   const rows = [];
-
+  
   const sorted_levels = Object.keys(levels)
     .sort((x, y) => metadata[x].sort_key - metadata[y].sort_key);
   const bookmarks = readBookmarks();
@@ -442,7 +442,7 @@ function showTopPlayers1k() {
 }
 
 function showTopLevels(heading, top_levels) {
-  const headers = ["Player", "Place", "levels", "nand", "delay", "tick", "sum"];
+  const headers = ["Player", "Place", "levels", "gate", "delay", "tick", "sum"];
   const rows = [];
 
   const bookmarks = readBookmarks();
@@ -461,7 +461,7 @@ function showTopLevels(heading, top_levels) {
     return {
       player: player,
       solved: s.length,
-      nand: s.reduce((sum, b) => sum + b.nand, 0),
+      gate: s.reduce((sum, b) => sum + b.gate, 0),
       delay: s.reduce((sum, b) => sum + b.delay, 0),
       tick: s.reduce((sum, b) => sum + b.tick, 0),
       sum: s.reduce((sum, b) => sum + b.sum, 0),
@@ -491,7 +491,7 @@ function showTopLevels(heading, top_levels) {
       result.player,
       placeMedal(place),
       result.solved,
-      result.nand,
+      result.gate,
       result.delay,
       result.tick,
       result.sum,
@@ -558,7 +558,7 @@ function showLevel(level_id) {
     [level_id, board_id] = level_id.split(";");
     board_id = parseInt(board_id) || 0;
   }
-  const board_types = ["sum", "nand", "delay", "tick"]
+  const board_types = ["sum", "gate", "delay", "tick"]
   const board_type = board_types[board_id]
 
   activateLevelButton(level_id);
@@ -566,7 +566,7 @@ function showLevel(level_id) {
   document.title = "TC Leaderboard - " + level_name;
   const heading = "Leaderboard for " + level_name;
   const bookmark = createBookmark(level_id);
-  const headers = ["Player", "Place", "Type", "nand", "delay", "tick", "sum"];
+  const headers = ["Player", "Place", "Type", "gate", "delay", "tick", "sum"];
   for (b in board_types) {
     if (b != board_id && b in levels[level_id]) {
       let idx = headers.indexOf(board_types[b]);
@@ -583,8 +583,8 @@ function showLevel(level_id) {
     // Sort solvers by lowest sum
     board_sort = ([x, a], [y, b]) => a.sum - b.sum;
   } else if (board_id == 1) {
-    // Sort solvers by lowest nand, then sum
-    board_sort = ([x, a], [y, b]) => a.nand - b.nand || a.sum - b.sum;
+    // Sort solvers by lowest gate, then sum
+    board_sort = ([x, a], [y, b]) => a.gate - b.gate || a.sum - b.sum;
   } else if (board_id == 2) {
     // Sort solvers by lowest delay, then sum
     board_sort = ([x, a], [y, b]) => a.delay - b.delay || a.sum - b.sum;
@@ -610,7 +610,7 @@ function showLevel(level_id) {
       placed_solves++;
     }
     const solver_name = playerName(solver_id);
-    const nand = solver.nand;
+    const gate = solver.gate;
     const delay = solver.delay;
     const tick = ticksScored ? solver.tick : "-";
     const sum = solver.sum;
@@ -634,7 +634,7 @@ function showLevel(level_id) {
       player,
       placed ? placeMedal(place) : "-",
       score_type,
-      nand,
+      gate,
       delay,
       tick,
       sum,
@@ -647,7 +647,7 @@ function showLevel(level_id) {
   if (board_id == 0) {
     board_metric = s => s.sum;
   } else if (board_id == 1) {
-    board_metric = s => s.nand;
+    board_metric = s => s.gate;
   } else if (board_id == 2) {
     board_metric = s => s.delay;
   } else if (board_id == 3) {
@@ -714,7 +714,7 @@ function showPlayer(player_id) {
   document.title = "TC Leaderboard - " + player_name;
   const heading = "Stats for " + player_name;
   const bookmark = createBookmark(player_id);
-  const headers = ["Level", "Place", "# tied", "nand", "delay", "tick", "sum"];
+  const headers = ["Level", "Place", "# tied", "gate", "delay", "tick", "sum"];
   const rows = [];
 
   const sorted_levels = Object.keys(levels)
@@ -733,7 +733,7 @@ function showPlayer(player_id) {
     const level_version = metadata[level_id].version;
     let place = "-",
       ties = "-",
-      nand = "-",
+      gate = "-",
       delay = "-",
       tick = "-",
       sum = "-";
@@ -747,7 +747,7 @@ function showPlayer(player_id) {
       metadata[level_id].scored;
     if (solved && scored) {
       const player_score = levels[level_id][0][player_id];
-      nand = player_score.nand;
+      gate = player_score.gate;
       delay = player_score.delay;
       if (ticksScored) {
         tick = player_score.tick;
@@ -785,7 +785,7 @@ function showPlayer(player_id) {
       scored ? level : level_name,
       place,
       ties,
-      nand,
+      gate,
       delay,
       tick,
       sum
@@ -840,7 +840,7 @@ function buildTable(heading, bookmark, headers, rows, extra) {
   const separators = headers
     .map(e => e?.text || e)
     .map((e, i) => [e, i])
-    .filter(([e, i]) => ["nand", "sum"].includes(e))
+    .filter(([e, i]) => ["gate", "sum"].includes(e))
     .map(([e, i]) => i)
     .map(String);
 
