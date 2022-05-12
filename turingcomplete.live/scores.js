@@ -31,20 +31,20 @@ function loadHashPage() {
 
 // ---------------------------------------------------------
 function levelName(level_id) {
-  if (!(level_id in metadata)) return level_id;
-  return metadata[level_id].name || level_id;
+  return metadata[level_id]?.name || level_id;
 }
 
 function playerName(player_id) {
-  if (!(player_id in user_ids)) return player_id;
   return user_ids[player_id] || player_id;
 }
 
 function placeMedal(place) {
-  if (place == 1) return "\u{1f947}";
-  if (place == 2) return "\u{1f948}";
-  if (place == 3) return "\u{1f949}";
-  return place;
+  const medals = {
+    1: "\u{1f947}",
+    2: "\u{1f948}",
+    3: "\u{1f949}",
+  }
+  return medals[place] || place;
 }
 
 // ---------------------------------------------------------
@@ -76,10 +76,9 @@ function activateButton(text, hash) {
 }
 
 function createButton(text, hash) {
-  const id = "btn_" + hash;
-  const button = $(`<button class="btn btn-primary" id="${id}">${text}</button>`).on('click', () => window.location.hash=hash)
-  $("#button-container").append(button)
-  return button;
+  return $(`<button class="btn btn-primary" id="btn_${hash}">${text}</button>`)
+          .on('click', () => window.location.hash=hash)
+          .appendTo('#button-container')
 }
 
 // ---------------------------------------------------------
@@ -91,15 +90,9 @@ function readBookmarks() {
 
 function createBookmark(bookmark) {
   const bookmarks = readBookmarks();
-  const i = document.createElement("i");
-  const id = "bookmark_" + bookmark;
   const className = bookmarks.includes(bookmark) ? "bi-bookmark-star" : "bi-bookmark";
-  i.setAttribute("id", id);
-  i.setAttribute("role", "img");
-  i.setAttribute("aria-label", "Bookmark");
-  i.setAttribute("onclick", "toggleBookmark('" + bookmark + "');");
-  i.className = `bi ${className}`;
-  return i;
+  return $(`<i id="bookmark_${bookmark}" role="img" aria-label="Bookmark" class="bi ${className}"></i>`)
+          .on('click', () => toggleBookmark(bookmark))
 }
 
 function bookmarkSort(x, y) {
@@ -200,7 +193,7 @@ function clearStaleCacheInterval() {
 }
 
 // ---------------------------------------------------------
-function refreshApiData() {
+async function refreshApiData() {
   gtag("event", load_complete ? "refresh" : "load");
   const reload = load_complete;
   load_complete = false;
@@ -217,46 +210,42 @@ function refreshApiData() {
   if (!reload && cacheTooOld) {
     updateStaleCacheTime();
   }
-  loadApiData(reload || cacheTooOld)
-    .then(([usernames, scores, level_meta]) => {
-      if (viewing_cached_data) {
-        updateStaleCacheTime();
-      } else {
-        apiCacheUpdated();
-      }
-      setStaleCacheInterval();
-      handleUsernames(usernames);
-      handleScores(scores);
-      handleLevelMeta(level_meta);
-      load_complete = true;
-      loadBookmarks();
-      loadHashPage();
-    })
-    .catch((error) => {
-      const refresh = document.getElementById("btn_refresh");
-      refresh.className = "btn btn-danger";
-      const title = document.createElement("h2");
-      const titleText = document.createTextNode("Failed to load: " + error);
-      title.appendChild(titleText);
-      const pre = document.createElement("pre");
-      const preText = document.createTextNode(error.stack);
-      pre.appendChild(preText);
-      document.getElementById("content").replaceChildren(title, pre);
-    });
+  try {
+    const [usernames, scores, level_meta] = await loadApiData(reload || cacheTooOld);
+    if (viewing_cached_data) {
+      updateStaleCacheTime();
+    } else {
+      apiCacheUpdated();
+    }
+    setStaleCacheInterval();
+    handleUsernames(usernames);
+    handleScores(scores);
+    handleLevelMeta(level_meta);
+    load_complete = true;
+    loadBookmarks();
+    loadHashPage();
+  } 
+  catch (error) {
+    const refresh = document.getElementById("btn_refresh");
+    refresh.className = "btn btn-danger";
+    const title = document.createElement("h2");
+    const titleText = document.createTextNode("Failed to load: " + error);
+    title.appendChild(titleText);
+    const pre = document.createElement("pre");
+    const preText = document.createTextNode(error.stack);
+    pre.appendChild(preText);
+    document.getElementById("content").replaceChildren(title, pre);
+  }
 }
 
 // ---------------------------------------------------------
 async function loadApiData(reload) {
   const fetch = reload ? fetchWithCache : cacheWithFetch;
-  const [usernamesResponse, scoresResponse, metadataResponse] = await Promise.all([
-    fetch("https://turingcomplete.game/api_usernames"),
-    fetch("https://turingcomplete.game/api_score"),
-    fetch("https://turingcomplete.game/api_level_meta"),
+  return Promise.all([
+    fetch("https://turingcomplete.game/api_usernames").then(response => response.text()),
+    fetch("https://turingcomplete.game/api_score").then(response => response.text()),
+    fetch("https://turingcomplete.game/api_level_meta").then(response => response.text()),
   ]);
-  const usernames = await usernamesResponse.text();
-  const scores = await scoresResponse.text();
-  const metadata = await metadataResponse.text();
-  return [usernames, scores, metadata];
 }
 
 // ---------------------------------------------------------
@@ -276,7 +265,7 @@ async function fetchWithCache(url) {
     console.log("Fetch failed: " + url);
   }
   if (!cache_updated) viewing_cached_data = true;
-  return await cache.match(url);
+  return cache.match(url);
 }
 
 async function cacheWithFetch(url) {
@@ -565,7 +554,7 @@ function showLevel(level_id) {
   const level_name = levelName(level_id);
   document.title = "TC Leaderboard - " + level_name;
   const heading = "Leaderboard for " + level_name;
-  const bookmark = createBookmark(level_id);
+  const bookmark = createBookmark(level_id)[0];
   const headers = ["Player", "Place", "Type", "gate", "delay", "tick", "sum"];
   for (b in board_types) {
     if (b != board_id && b in levels[level_id]) {
@@ -713,7 +702,7 @@ function showPlayer(player_id) {
   const player_name = playerName(player_id);
   document.title = "TC Leaderboard - " + player_name;
   const heading = "Stats for " + player_name;
-  const bookmark = createBookmark(player_id);
+  const bookmark = createBookmark(player_id)[0];
   const headers = ["Level", "Place", "# tied", "gate", "delay", "tick", "sum"];
   const rows = [];
 
