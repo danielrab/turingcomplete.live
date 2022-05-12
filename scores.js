@@ -15,10 +15,6 @@ function loadHashPage() {
   if (!load_complete) return;
   let h = window.location.hash || "#overview";
   const page_path = h.replace(/^#/, "/");
-  gtag("set", "page_path", page_path);
-  gtag("event", "page_view", {
-    "page_path": page_path
-  });
   if (typeof h != "string") return showLevels();
   if (!h.startsWith("#")) return showLevels();
   h = h.substring(1);
@@ -102,21 +98,15 @@ function bookmarkSort(x, y) {
 }
 
 function toggleBookmark(bookmark) {
-  const i = document.getElementById("bookmark_" + bookmark);
+  const i = document.getElementById(`bookmark_${bookmark}`);
   let bookmarks = readBookmarks();
   if (bookmarks.includes(bookmark)) {
     bookmarks = bookmarks.filter(b => b != bookmark);
     i.className = "bi bi-bookmark";
-    gtag("event", "remove_bookmark", {
-      "value": bookmark
-    });
   } else {
     bookmarks.push(bookmark);
     bookmarks.sort(bookmarkSort);
     i.className = "bi bi-bookmark-star";
-    gtag("event", "add_bookmark", {
-      "value": bookmark
-    });
   }
   if (bookmarks.length == 0) {
     localStorage.removeItem("bookmarks");
@@ -194,7 +184,6 @@ function clearStaleCacheInterval() {
 
 // ---------------------------------------------------------
 async function refreshApiData() {
-  gtag("event", load_complete ? "refresh" : "load");
   const reload = load_complete;
   load_complete = false;
   viewing_cached_data = false;
