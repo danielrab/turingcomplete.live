@@ -28,9 +28,9 @@
         <i class="bi bi-arrow-repeat" role="img" aria-label="Refresh"></i>
         <span id="lbl_refresh"></span>
       </button>
-      <button class="btn btn-outline-primary" onclick="window.location.hash=''" id="btn_overview">Level Overview</button>
-      <button class="btn btn-outline-primary" onclick="window.location.hash='top_players'" id="btn_top_players">Top Players</button>
-      <button class="btn btn-outline-primary" onclick="window.location.hash='top_players_1k'" id="btn_top_players_1k">Top Players (&gt;1k solvers)</button>
+      <button class="btn btn-outline-primary" onclick="window.location.hash=''" id="btn_overview" param_type="overview">Level Overview</button>
+      <button class="btn btn-outline-primary" onclick="window.location.hash='top_players'" id="btn_top_players" param_type="top_players" param_min_solvers="0">Top Players</button>
+      <button class="btn btn-outline-primary" onclick="window.location.hash='top_players;min_solvers=1000'" id="btn_top_players_1000" param_type="top_players" param_min_solvers="1000">Top Players (&gt;1k solvers)</button>
     </div>
   </div>
   <div class="row">

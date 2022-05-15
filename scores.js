@@ -18,11 +18,11 @@ google.charts.load("current", {
 
 function parseHashParams(hash) {
   const raw_params = hash.replace(/^#/, '').split(';');
-  const params = {other: []};
+  const params = {other: ''};
   for (const raw_param of raw_params) {
     let match = raw_param.match(/(.+?)=(.+)/);
     if (match) {
-      params[match[1]] = match[2];
+      params[match[1]] = parseInt(match[2]) === NaN ? match[2] : parseInt(match[2]);
     } else {
       params.other = raw_param;
     }
@@ -34,10 +34,11 @@ function parseHashParams(hash) {
     } else if (params.other in user_ids) {
       params.type = 'player';
       params.id = params.other;
-    } else {
+    } else if (params.other){
       params.type = params.other;
     }
   }
+  delete params.other;
   return params;
 }
 
@@ -52,7 +53,6 @@ function loadHashPage() {
   if (params.type == 'player') return showPlayer(params);
   if (params.type == 'level') return showLevel(params);
   if (params.type == "top_players") return showTopPlayers(params);
-  if (params.type == "top_players_1k") return showTopPlayers1k(params);
   return showLevels();
 }
 
@@ -79,12 +79,8 @@ function activateOverviewButton() {
   activateButton("Level Overview", {type:'overview'});
 }
 
-function activateTopPlayersButton() {
-  activateButton("Top Players", {type:"top_players"});
-}
-
-function activateTopPlayers1kButton() {
-  activateButton("Top Players (>1k solvers)", {type:"top_players_1k"});
+function activateTopPlayersButton(min_solvers) {
+  activateButton("Top Players", {type:"top_players", min_solvers});
 }
 
 function activateLevelButton(level_id) {
@@ -96,18 +92,22 @@ function activatePlayerButton(player_id) {
 }
 
 function activateButton(text, params={}) {
-  const true_params = parseHashParams(encodeParams(params))
-  const id = ['btn', true_params.type, true_params.id].filter(s => s).join('_');
+  const query = Object.keys(params).map(p => `[param_${p}="${params[p]}"]`).join('')
+  console.log(params, params)
+  console.log(query)
   $('.btn-primary').removeClass('btn-primary').addClass('btn-outline-primary');
-  const button = $(`#${id}`)[0] || createButton(text, params)[0];
+  const button = $(`button${query}`)[0] || createButton(text, params)[0];
   $(button).addClass("btn-primary").removeClass('btn-outline-primary');
 }
 
 function createButton(text, params) {
-  const true_params = parseHashParams(encodeParams(params))
-  return $(`<button class="btn btn-primary" id="btn_${true_params.type}_${true_params.id}">${text}</button>`)
+  const button = $(`<button class="btn btn-primary">${text}</button>`)
           .on('click', () => window.location.hash=encodeParams(params))
           .appendTo('#button-container')
+  for (const param in params) {
+    button.attr(`param_${param}`, params[param]);
+  }
+  return button;
 }
 
 // ---------------------------------------------------------
@@ -426,25 +426,14 @@ function showLevels() {
 }
 
 // ---------------------------------------------------------
-function showTopPlayers({entries=100}={}) {
-  activateTopPlayersButton();
+function showTopPlayers({entries=100, min_solvers=0}={}) {
+  activateTopPlayersButton(min_solvers);
   document.title = "TC Leaderboard - Top Players";
   const heading = "Total combined scores";
 
   const top_levels = Object.keys(levels)
-    .filter(l => metadata[l].scored); // Scored
-
-  showTopLevels(heading, top_levels, entries);
-}
-
-function showTopPlayers1k({entries=100}={}) {
-  activateTopPlayers1kButton();
-  document.title = "TC Leaderboard - Top Players (>1k solves)";
-  const heading = "Total combined scores for levels with >1000 solvers";
-
-  const top_levels = Object.keys(levels)
     .filter(l => metadata[l].scored) // Scored
-    .filter(l => Object.keys(levels[l][0]).length > 1000); // More than 1000 solvers
+    .filter(l => Object.keys(levels[l][0]).length > min_solvers); // More than min_solves solvers
 
   showTopLevels(heading, top_levels, entries);
 }
