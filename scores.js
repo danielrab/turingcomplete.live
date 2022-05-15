@@ -1,28 +1,59 @@
+const USERNAMES_API = "https://turingcomplete.game/api_usernames";
+const SCORE_API = "https://turingcomplete.game/api_score";
+const META_API = "https://turingcomplete.game/api_level_meta";
 const user_ids = {};
 const levels = {};
 const metadata = {};
 let load_complete = false;
 let viewing_cached_data = false;
+let staleCacheInterval = 0;
 
 window.addEventListener("hashchange", loadHashPage);
-window.onload = refreshApiData;
+window.onload = () => {
+  refreshApiData({pageLoad: true});
+};
 google.charts.load("current", {
   packages: ["corechart"]
 });
 
+function parseHashParams(hash) {
+  const raw_params = hash.replace(/^#/, '').split(';');
+  const params = {other: []};
+  for (const raw_param of raw_params) {
+    let match = raw_param.match(/(.+?)=(.+)/);
+    if (match) {
+      params[match[1]] = match[2];
+    } else {
+      params.other = raw_param;
+    }
+  }
+  if (!params.type) {
+    if (params.other in levels) {
+      params.type = 'level';
+      params.id = params.other;
+    } else if (params.other in user_ids) {
+      params.type = 'player';
+      params.id = params.other;
+    } else {
+      params.type = params.other;
+    }
+  }
+  return params;
+}
+
+function encodeParams(params) {
+  return Object.entries(params).map(([param, value]) => `${param}=${value}`).join(';').replace('other=', '');
+}
+
 // ---------------------------------------------------------
 function loadHashPage() {
   if (!load_complete) return;
-  let h = window.location.hash || "#overview";
-  const page_path = h.replace(/^#/, "/");
-  if (typeof h != "string") return showLevels();
-  if (!h.startsWith("#")) return showLevels();
-  h = h.substring(1);
-  if (!isNaN(parseInt(h))) return showPlayer(h);
-  if (h == "overview") return showLevels();
-  if (h == "top_players") return showTopPlayers();
-  if (h == "top_players_1k") return showTopPlayers1k();
-  return showLevel(h);
+  const params = parseHashParams(window.location.hash)
+  if (params.type == 'player') return showPlayer(params);
+  if (params.type == 'level') return showLevel(params);
+  if (params.type == "top_players") return showTopPlayers(params);
+  if (params.type == "top_players_1k") return showTopPlayers1k(params);
+  return showLevels();
 }
 
 // ---------------------------------------------------------
@@ -45,35 +76,37 @@ function placeMedal(place) {
 
 // ---------------------------------------------------------
 function activateOverviewButton() {
-  activateButton("Level Overview", "overview");
+  activateButton("Level Overview", {type:'overview'});
 }
 
 function activateTopPlayersButton() {
-  activateButton("Top Players", "top_players");
+  activateButton("Top Players", {type:"top_players"});
 }
 
 function activateTopPlayers1kButton() {
-  activateButton("Top Players (>1k solvers)", "top_players_1k");
+  activateButton("Top Players (>1k solvers)", {type:"top_players_1k"});
 }
 
 function activateLevelButton(level_id) {
-  activateButton(levelName(level_id), level_id);
+  activateButton(levelName(level_id), {other:level_id});
 }
 
 function activatePlayerButton(player_id) {
-  activateButton(playerName(player_id), player_id);
+  activateButton(playerName(player_id), {other:player_id});
 }
 
-function activateButton(text, hash) {
-  const id = `btn_${hash}`;
+function activateButton(text, params={}) {
+  const true_params = parseHashParams(encodeParams(params))
+  const id = ['btn', true_params.type, true_params.id].filter(s => s).join('_');
   $('.btn-primary').removeClass('btn-primary').addClass('btn-outline-primary');
-  const button = $(`#${id}`)[0] || createButton(text, hash)[0];
+  const button = $(`#${id}`)[0] || createButton(text, params)[0];
   $(button).addClass("btn-primary").removeClass('btn-outline-primary');
 }
 
-function createButton(text, hash) {
-  return $(`<button class="btn btn-primary" id="btn_${hash}">${text}</button>`)
-          .on('click', () => window.location.hash=hash)
+function createButton(text, params) {
+  const true_params = parseHashParams(encodeParams(params))
+  return $(`<button class="btn btn-primary" id="btn_${true_params.type}_${true_params.id}">${text}</button>`)
+          .on('click', () => window.location.hash=encodeParams(params))
           .appendTo('#button-container')
 }
 
@@ -123,11 +156,11 @@ function loadBookmarks() {
     if (document.getElementById("btn_" + bookmark)) continue;
     if (!isNaN(parseInt(bookmark)) && Object.keys(user_ids).includes(bookmark)) {
       const player_name = playerName(bookmark);
-      const button = createButton(player_name, bookmark)[0];
+      const button = createButton(player_name, {other:bookmark})[0];
       container.appendChild(button);
     } else if (Object.keys(levels).includes(bookmark)) {
       const level_name = levelName(bookmark);
-      const button = createButton(level_name, bookmark)[0];
+      const button = createButton(level_name, {other:bookmark})[0];
       container.appendChild(button);
     } else {
       // console.log("Ignoring unrecognized bookmark: " + bookmark);
@@ -169,8 +202,6 @@ function clearStaleCacheTime() {
   updateRefreshButton("outline-primary", "");
 }
 
-let staleCacheInterval = 0;
-
 function setStaleCacheInterval() {
   staleCacheInterval = setInterval(updateStaleCacheTime, 10 * 1000);
 }
@@ -183,8 +214,8 @@ function clearStaleCacheInterval() {
 }
 
 // ---------------------------------------------------------
-async function refreshApiData() {
-  const reload = load_complete;
+async function refreshApiData({pageLoad=false}={}) {
+  const reload = !pageLoad;
   load_complete = false;
   viewing_cached_data = false;
   clearStaleCacheInterval();
@@ -210,8 +241,10 @@ async function refreshApiData() {
     handleUsernames(usernames);
     handleScores(scores);
     handleLevelMeta(level_meta);
+    if (!(reload || cacheTooOld)) {
+      loadBookmarks();
+    }
     load_complete = true;
-    loadBookmarks();
     loadHashPage();
   } 
   catch (error) {
@@ -284,7 +317,7 @@ function handleUsernames(data) {
 function handleScores(data) {
   // Server scores (user_id, level_id, gate, delay, tick, score_type, version)
   let scores_count = 0;
-  for (const match of data.matchAll(/\b(\d+),(\w+),(\d+),(\d+),(\d+),(\d+),(\d+)(\n|$)/g)) {
+  for (const match of data.matchAll(/\b(\d+),(\w+),(\d+),(\d+),(\d+),(\d+)(\n|$)/g)) {
     scores_count++;
     const user_id = match[1];
     const level_id = match[2];
@@ -292,7 +325,6 @@ function handleScores(data) {
     const delay = parseInt(match[4]);
     const tick = parseInt(match[5]);
     const score_type = parseInt(match[6]);
-    const version = parseInt(match[7]);
     if (!(level_id in levels)) {
       levels[level_id] = {};
     }
@@ -304,7 +336,6 @@ function handleScores(data) {
       delay: delay,
       tick: tick,
       sum: gate + delay + tick,
-      version: version,
     };
   }
   console.log("Read " + scores_count + " scores");
@@ -314,14 +345,13 @@ function handleLevelMeta(level_meta) {
   // Meta data for levels (enum_number, enum_id, title, is_architecture, no_score, level_version).
   // The order here is the same as on player profiles.
   let meta_count = 0;
-  for (const match of level_meta.matchAll(/\b(\d+),(\w+),([\s\w]*),(\w+),(\w+),(\d+)(\n|$)/g)) {
+  for (const match of level_meta.matchAll(/\b(\d+),(\w+),([\s\w]*),(\w+),(\w+)(\n|$)/g)) {
     const level_id = match[2];
     metadata[level_id] = {
       sort_key: parseInt(meta_count++),
       name: match[3],
       arch: match[4] === "true",
       scored: match[5] === "false",
-      version: match[6],
     };
   }
   console.log("Read " + meta_count + " levels");
@@ -377,7 +407,7 @@ function showLevels() {
     }
 
     const level = {
-      href: "#" + level_id,
+      href: "#" + encodeParams({type:'level', id:level_id}),
       text: level_name,
     };
     if (bookmarks.includes(level_id)) {
@@ -396,7 +426,7 @@ function showLevels() {
 }
 
 // ---------------------------------------------------------
-function showTopPlayers() {
+function showTopPlayers({entries=100}={}) {
   activateTopPlayersButton();
   document.title = "TC Leaderboard - Top Players";
   const heading = "Total combined scores";
@@ -404,10 +434,10 @@ function showTopPlayers() {
   const top_levels = Object.keys(levels)
     .filter(l => metadata[l].scored); // Scored
 
-  showTopLevels(heading, top_levels);
+  showTopLevels(heading, top_levels, entries);
 }
 
-function showTopPlayers1k() {
+function showTopPlayers1k({entries=100}={}) {
   activateTopPlayers1kButton();
   document.title = "TC Leaderboard - Top Players (>1k solves)";
   const heading = "Total combined scores for levels with >1000 solvers";
@@ -416,17 +446,18 @@ function showTopPlayers1k() {
     .filter(l => metadata[l].scored) // Scored
     .filter(l => Object.keys(levels[l][0]).length > 1000); // More than 1000 solvers
 
-  showTopLevels(heading, top_levels);
+  showTopLevels(heading, top_levels, entries);
 }
 
-function showTopLevels(heading, top_levels) {
+function showTopLevels(heading, top_levels, entries) {
+  entries = parseInt(entries);
   const headers = ["Player", "Place", "levels", "gate", "delay", "tick", "sum"];
   const rows = [];
 
   const bookmarks = readBookmarks();
   let results = Object.keys(user_ids).map(function(player_id) {
     const player = {
-      href: "#" + player_id,
+      href: "#" + encodeParams({type:'player', id:player_id}),
       text: playerName(player_id),
     };
     if (bookmarks.includes(player_id)) {
@@ -452,7 +483,7 @@ function showTopLevels(heading, top_levels) {
     ["player", "sum"]
   ];
   for (const r in results) {
-    if (++num_results > 100) break; // Only show 100 results
+    if (++num_results > entries) break; // Only show 100 results
 
     const result = results[r];
 
@@ -530,60 +561,55 @@ function showTopLevels(heading, top_levels) {
 }
 
 // ---------------------------------------------------------
-function showLevel(level_id) {
-  let board_id = 0;
-  if (level_id.indexOf(";") != -1) {
-    [level_id, board_id] = level_id.split(";");
-    board_id = parseInt(board_id) || 0;
-  }
-  const board_types = ["sum", "gate", "delay", "tick"]
-  const board_type = board_types[board_id]
+function showLevel({id, mode}) {
+  mode = mode || 'sum';
+  const modes = ["sum", "gate", "delay", "tick"]
+  const mode_id = modes.indexOf(mode);
 
-  activateLevelButton(level_id);
-  const level_name = levelName(level_id);
+  activateLevelButton(id);
+  const level_name = levelName(id);
   document.title = "TC Leaderboard - " + level_name;
   const heading = "Leaderboard for " + level_name;
-  const bookmark = createBookmark(level_id)[0];
+  const bookmark = createBookmark(id)[0];
   const headers = ["Player", "Place", "Type", "gate", "delay", "tick", "sum"];
-  for (b in board_types) {
-    if (b != board_id && b in levels[level_id]) {
-      let idx = headers.indexOf(board_types[b]);
-      headers[idx] = {
-        text: board_types[b],
-        href: "#" + (b == 0 ? level_id : level_id + ";" + b)
+  for (header_mode of modes) {
+    if (header_mode != mode && modes.indexOf(header_mode) in levels[id]) {
+      headers[headers.indexOf(header_mode)] = {
+        text: header_mode,
+        href: "#" + encodeParams({type:'level', id, mode:header_mode})
       }
     }
   }
   const rows = [];
 
   let board_sort;
-  if (board_id == 0) {
+  if (mode == 'sum') {
     // Sort solvers by lowest sum
     board_sort = ([x, a], [y, b]) => a.sum - b.sum;
-  } else if (board_id == 1) {
+  } else if (mode == 'gate') {
     // Sort solvers by lowest gate, then sum
     board_sort = ([x, a], [y, b]) => a.gate - b.gate || a.sum - b.sum;
-  } else if (board_id == 2) {
+  } else if (mode == 'delay') {
     // Sort solvers by lowest delay, then sum
     board_sort = ([x, a], [y, b]) => a.delay - b.delay || a.sum - b.sum;
-  } else if (board_id == 3) {
+  } else if (mode == 'tick') {
     // Sort solvers by lowest tick, then sum
     board_sort = ([x, a], [y, b]) => a.tick - b.tick || a.sum - b.sum;
   }
-  const sorted_solvers = Object.entries(levels[level_id][board_id]).sort(board_sort);
+  const sorted_solvers = Object.entries(levels[id][mode_id]).sort(board_sort);
 
   let solves = 0;
   let place = 1;
   let placed_solves = 0;
   const bookmarks = readBookmarks();
   const ticksScored =
-    metadata[level_id].scored &&
-    metadata[level_id].arch;
+    metadata[id].scored &&
+    metadata[id].arch;
   for (const s in sorted_solvers) {
     if (++solves > 100) break; // Only show 100 results
 
     const [solver_id, solver] = sorted_solvers[s];
-    placed = metadata[level_id].version == solver.version;
+    placed = metadata[id].version == solver.version;
     if (placed) {
       placed_solves++;
     }
@@ -592,7 +618,7 @@ function showLevel(level_id) {
     const delay = solver.delay;
     const tick = ticksScored ? solver.tick : "-";
     const sum = solver.sum;
-    const score_type = (placed ? "Best " : "Legacy ") + board_type;
+    const score_type = (placed ? "Best " : "Legacy ") + mode;
 
     if (s > 0) {
       const [solver_id_above, solver_above] = sorted_solvers[s - 1];
@@ -602,7 +628,7 @@ function showLevel(level_id) {
       }
     }
     const player = {
-      href: "#" + solver_id,
+      href: "#" + encodeParams({type:'player', id:solver_id}),
       text: solver_name,
     };
     if (bookmarks.includes(solver_id)) {
@@ -620,15 +646,15 @@ function showLevel(level_id) {
     rows.push(row);
   }
   const p90 = sorted_solvers[Math.floor(sorted_solvers.length * 0.90)];
-  const data = [["solver", board_type]];
+  const data = [["solver", mode]];
   let board_metric;
-  if (board_id == 0) {
+  if (mode == 'sum') {
     board_metric = s => s.sum;
-  } else if (board_id == 1) {
+  } else if (mode == 'gate') {
     board_metric = s => s.gate;
-  } else if (board_id == 2) {
+  } else if (mode == 'delay') {
     board_metric = s => s.delay;
-  } else if (board_id == 3) {
+  } else if (mode == 'tick') {
     board_metric = s => s.tick;
   }
   const first = board_metric(sorted_solvers[0][1]);
@@ -686,12 +712,12 @@ function showLevel(level_id) {
 }
 
 // ---------------------------------------------------------
-function showPlayer(player_id) {
-  activatePlayerButton(player_id);
-  const player_name = playerName(player_id);
+function showPlayer({id}) {
+  activatePlayerButton(id);
+  const player_name = playerName(id);
   document.title = "TC Leaderboard - " + player_name;
   const heading = "Stats for " + player_name;
-  const bookmark = createBookmark(player_id)[0];
+  const bookmark = createBookmark(id)[0];
   const headers = ["Level", "Place", "# tied", "gate", "delay", "tick", "sum"];
   const rows = [];
 
@@ -715,7 +741,7 @@ function showPlayer(player_id) {
       delay = "-",
       tick = "-",
       sum = "-";
-    const solved = (player_id in levels[level_id][0]);
+    const solved = (id in levels[level_id][0]);
     const solves = Object.keys(levels[level_id][0])
       .map(x => levels[level_id][0][x]);
     const ticksScored =
@@ -724,7 +750,7 @@ function showPlayer(player_id) {
     const scored =
       metadata[level_id].scored;
     if (solved && scored) {
-      const player_score = levels[level_id][0][player_id];
+      const player_score = levels[level_id][0][id];
       gate = player_score.gate;
       delay = player_score.delay;
       if (ticksScored) {
@@ -749,7 +775,7 @@ function showPlayer(player_id) {
       medals[5]++;
     }
     const level = {
-      href: "#" + level_id,
+      href: "#" + encodeParams({type:'level', id:level_id}),
       text: level_name,
     };
     if (bookmarks.includes(level_id)) {
@@ -774,7 +800,7 @@ function showPlayer(player_id) {
     const div = document.createElement("div");
     const img = document.createElement("img");
     img.classList.add('rounded');
-    img.src = "https://turingcomplete.game/avatars/" + player_id + ".jpg";
+    img.src = "https://turingcomplete.game/avatars/" + id + ".jpg";
     div.appendChild(img);
     container.appendChild(div);
 
@@ -787,8 +813,8 @@ function showPlayer(player_id) {
     container.appendChild(medalsDiv);
 
     const link = document.createElement("a");
-    link.href = "https://turingcomplete.game/profile/" + player_id;
-    const player_name = playerName(player_id);
+    link.href = "https://turingcomplete.game/profile/" + id;
+    const player_name = playerName(id);
     const linkText = document.createTextNode(player_name + "'s Profile [turingcomplete.game]");
     link.appendChild(linkText);
     container.appendChild(link);
