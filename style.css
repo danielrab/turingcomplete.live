@@ -25,3 +25,14 @@
   align-items: center;
   margin: 0.5rem;
 }
+
+.spin {
+  animation:spin 2s linear infinite;
+}
+
+@keyframes spin { 
+  100% { 
+      -webkit-transform: rotate(360deg); 
+      transform:rotate(360deg); 
+  } 
+}

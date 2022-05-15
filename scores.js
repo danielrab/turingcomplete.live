@@ -8,8 +8,14 @@ let load_complete = false;
 let viewing_cached_data = false;
 let staleCacheInterval = 0;
 
-window.addEventListener("hashchange", loadHashPage);
+window.addEventListener("hashchange", () => {
+  loadHashPage();
+});
 window.onload = () => {
+  const title = document.createElement("h2");
+  const titleText = document.createTextNode("Downloading scores...");
+  title.appendChild(titleText);
+  document.getElementById("content").replaceChildren(title);
   refreshApiData({pageLoad: true});
 };
 google.charts.load("current", {
@@ -48,7 +54,6 @@ function encodeParams(params) {
 
 // ---------------------------------------------------------
 function loadHashPage() {
-  if (!load_complete) return;
   const params = parseHashParams(window.location.hash)
   if (params.type == 'player') return showPlayer(params);
   if (params.type == 'level') return showLevel(params);
@@ -213,23 +218,17 @@ function clearStaleCacheInterval() {
 
 // ---------------------------------------------------------
 async function refreshApiData({pageLoad=false}={}) {
-  const reload = !pageLoad;
-  load_complete = false;
+  $('i[aria-label="Refresh"]').addClass('spin')
   viewing_cached_data = false;
   clearStaleCacheInterval();
   clearStaleCacheTime();
 
-  const title = document.createElement("h2");
-  const titleText = document.createTextNode("Downloading scores...");
-  title.appendChild(titleText);
-  document.getElementById("content").replaceChildren(title);
-
   const cacheTooOld = (apiCacheAge() > /*8 hours*/ 1000 * 60 * 60 * 8);
-  if (!reload && cacheTooOld) {
+  if (pageLoad && cacheTooOld) {
     updateStaleCacheTime();
   }
   try {
-    const [usernames, scores, level_meta] = await loadApiData(reload || cacheTooOld);
+    const [usernames, scores, level_meta] = await loadApiData(!pageLoad || cacheTooOld);
     if (viewing_cached_data) {
       updateStaleCacheTime();
     } else {
@@ -239,10 +238,9 @@ async function refreshApiData({pageLoad=false}={}) {
     handleUsernames(usernames);
     handleScores(scores);
     handleLevelMeta(level_meta);
-    if (!(reload || cacheTooOld)) {
+    if (pageLoad && !cacheTooOld) {
       loadBookmarks();
     }
-    load_complete = true;
     loadHashPage();
   } 
   catch (error) {
@@ -256,6 +254,7 @@ async function refreshApiData({pageLoad=false}={}) {
     pre.appendChild(preText);
     document.getElementById("content").replaceChildren(title, pre);
   }
+  $('i[aria-label="Refresh"]').removeClass('spin')
 }
 
 // ---------------------------------------------------------
