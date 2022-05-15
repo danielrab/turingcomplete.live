@@ -22,7 +22,7 @@ function parseHashParams(hash) {
   for (const raw_param of raw_params) {
     let match = raw_param.match(/(.+?)=(.+)/);
     if (match) {
-      params[match[1]] = parseInt(match[2]) === NaN ? match[2] : parseInt(match[2]);
+      params[match[1]] = isNaN(parseInt(match[2])) ? match[2] : parseInt(match[2]);
     } else {
       params.other = raw_param;
     }
@@ -93,8 +93,6 @@ function activatePlayerButton(player_id) {
 
 function activateButton(text, params={}) {
   const query = Object.keys(params).map(p => `[param_${p}="${params[p]}"]`).join('')
-  console.log(params, params)
-  console.log(query)
   $('.btn-primary').removeClass('btn-primary').addClass('btn-outline-primary');
   const button = $(`button${query}`)[0] || createButton(text, params)[0];
   $(button).addClass("btn-primary").removeClass('btn-outline-primary');
@@ -264,9 +262,9 @@ async function refreshApiData({pageLoad=false}={}) {
 async function loadApiData(reload) {
   const fetch = reload ? fetchWithCache : cacheWithFetch;
   return Promise.all([
-    fetch("https://turingcomplete.game/api_usernames").then(response => response.text()),
-    fetch("https://turingcomplete.game/api_score").then(response => response.text()),
-    fetch("https://turingcomplete.game/api_level_meta").then(response => response.text()),
+    fetch(USERNAMES_API).then(response => response.text()),
+    fetch(SCORE_API).then(response => response.text()),
+    fetch(META_API).then(response => response.text()),
   ]);
 }
 
@@ -407,7 +405,7 @@ function showLevels() {
     }
 
     const level = {
-      href: "#" + encodeParams({type:'level', id:level_id}),
+      href: "#" + encodeParams({other:level_id}),
       text: level_name,
     };
     if (bookmarks.includes(level_id)) {
@@ -446,7 +444,7 @@ function showTopLevels(heading, top_levels, entries) {
   const bookmarks = readBookmarks();
   let results = Object.keys(user_ids).map(function(player_id) {
     const player = {
-      href: "#" + encodeParams({type:'player', id:player_id}),
+      href: "#" + encodeParams({other:player_id}),
       text: playerName(player_id),
     };
     if (bookmarks.includes(player_id)) {
@@ -565,7 +563,7 @@ function showLevel({id, mode}) {
     if (header_mode != mode && modes.indexOf(header_mode) in levels[id]) {
       headers[headers.indexOf(header_mode)] = {
         text: header_mode,
-        href: "#" + encodeParams({type:'level', id, mode:header_mode})
+        href: "#" + encodeParams({other:id, mode:header_mode})
       }
     }
   }
@@ -617,7 +615,7 @@ function showLevel({id, mode}) {
       }
     }
     const player = {
-      href: "#" + encodeParams({type:'player', id:solver_id}),
+      href: "#" + encodeParams({other:solver_id}),
       text: solver_name,
     };
     if (bookmarks.includes(solver_id)) {
@@ -764,7 +762,7 @@ function showPlayer({id}) {
       medals[5]++;
     }
     const level = {
-      href: "#" + encodeParams({type:'level', id:level_id}),
+      href: "#" + encodeParams({other:level_id}),
       text: level_name,
     };
     if (bookmarks.includes(level_id)) {
