@@ -12,15 +12,20 @@ window.addEventListener("hashchange", () => {
   loadHashPage();
 });
 window.onload = () => {
-  const title = document.createElement("h2");
-  const titleText = document.createTextNode("Downloading scores...");
-  title.appendChild(titleText);
-  document.getElementById("content").replaceChildren(title);
+  $('#title').html("Downloading scores...")
   refreshApiData({pageLoad: true});
 };
 google.charts.load("current", {
   packages: ["corechart"]
 });
+
+function tryParseInt(val) {
+  return isNaN(parseInt(val)) ? val : parseInt(val)
+}
+
+function parseCsv(text) {
+  return text.split('\n').filter(s => s).map(row => row.split(',').map(tryParseInt));
+}
 
 function parseHashParams(hash) {
   const raw_params = hash.replace(/^#/, '').split(';');
@@ -28,7 +33,7 @@ function parseHashParams(hash) {
   for (const raw_param of raw_params) {
     let match = raw_param.match(/(.+?)=(.+)/);
     if (match) {
-      params[match[1]] = isNaN(parseInt(match[2])) ? match[2] : parseInt(match[2]);
+      params[match[1]] = tryParseInt(match[2]);
     } else {
       params.other = raw_param;
     }
@@ -303,25 +308,17 @@ async function cacheWithFetch(url) {
 // ---------------------------------------------------------
 function handleUsernames(data) {
   // Server id to username relationship
-  for (const match of data.matchAll(/\b(\d+),(.*)(\n|$)/g)) {
-    const id = match[1];
-    const name = match[2];
+  const parsedData = parseCsv(data);
+  for (const [id, name] of parsedData) {
     user_ids[id] = name;
   }
-  console.log("Read " + Object.keys(user_ids).length + " usernames");
+  console.log("Read " + parsedData.length + " usernames");
 }
 
 function handleScores(data) {
-  // Server scores (user_id, level_id, gate, delay, tick, score_type, version)
-  let scores_count = 0;
-  for (const match of data.matchAll(/\b(\d+),(\w+),(\d+),(\d+),(\d+),(\d+)(\n|$)/g)) {
-    scores_count++;
-    const user_id = match[1];
-    const level_id = match[2];
-    const gate = parseInt(match[3]);
-    const delay = parseInt(match[4]);
-    const tick = parseInt(match[5]);
-    const score_type = parseInt(match[6]);
+  // Server scores (user_id, level_id, gate, delay, tick, score_type)
+  const parsedData = parseCsv(data);
+  for (const [user_id, level_id, gate, delay, tick, score_type] of parsedData) {
     if (!(level_id in levels)) {
       levels[level_id] = {};
     }
@@ -335,28 +332,28 @@ function handleScores(data) {
       sum: gate + delay + tick,
     };
   }
-  console.log("Read " + scores_count + " scores");
+  console.log("Read " + parsedData.length + " scores");
 }
 
 function handleLevelMeta(level_meta) {
-  // Meta data for levels (enum_number, enum_id, title, is_architecture, no_score, level_version).
+  // Meta data for levels (enum_number, enum_id, title, is_architecture, no_score).
   // The order here is the same as on player profiles.
+  const parsedData = parseCsv(level_meta);
   let meta_count = 0;
-  for (const match of level_meta.matchAll(/\b(\d+),(\w+),([\s\w]*),(\w+),(\w+)(\n|$)/g)) {
-    const level_id = match[2];
+  for (const [enum_number, level_id, title, is_architecture, no_score] of parsedData) {
     metadata[level_id] = {
       sort_key: parseInt(meta_count++),
-      name: match[3],
-      arch: match[4] === "true",
-      scored: match[5] === "false",
+      name: title,
+      arch: is_architecture === "true",
+      scored: no_score === "false",
     };
   }
-  console.log("Read " + meta_count + " levels");
+  console.log("Read " + parsedData.length + " levels");
 }
 
 // ---------------------------------------------------------
 function calculateMedian(list) {
-  const sorted_list = list.sort((a, b) => a - b);
+  list.sort((a, b) => a - b);
   const middle = (list.length - 1) / 2;
   return (list[Math.floor(middle)] + list[Math.ceil(middle)]) / 2
 }
@@ -419,7 +416,7 @@ function showLevels() {
     ]);
   }
 
-  buildTable(heading, null, headers, rows);
+  renderPage(heading, null, headers, rows);
 }
 
 // ---------------------------------------------------------
@@ -433,6 +430,48 @@ function showTopPlayers({entries=100, min_solvers=0}={}) {
     .filter(l => Object.keys(levels[l][0]).length > min_solvers); // More than min_solves solvers
 
   showTopLevels(heading, top_levels, entries);
+}
+
+function getHistogram(data) {
+  const style = getComputedStyle(document.body);
+  const textColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-light" : "--bs-dark");
+  const bgColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-bg-color-alt" : "--bs-bg-color");
+  const options = {
+    width: Math.min(1050, window.innerWidth * 0.90),
+    height: 500,
+    chartArea: {
+      left: 20,
+      top: 0,
+      width: "95%",
+      height: "85%",
+    },
+    legend: {
+      position: "none",
+    },
+    hAxis: {
+      slantedText: true,
+      slantedTextAngle: -60,
+      textStyle: {
+        color: textColor,
+      },
+    },
+    vAxis: {
+      gridlines: {
+        count: 2,
+      }
+    },
+    backgroundColor: bgColor,
+    histogram: {
+      bucketSize: 1,
+      maxNumBuckets: Math.min(50, data.length),
+    },
+  };
+
+  const plotContainer = $('<div></div>');
+  const chart = new google.visualization.Histogram(plotContainer[0]);
+  const dataTable = google.visualization.arrayToDataTable(data);
+  chart.draw(dataTable, options);
+  return plotContainer;
 }
 
 function showTopLevels(heading, top_levels, entries) {
@@ -506,48 +545,12 @@ function showTopLevels(heading, top_levels, entries) {
     ]);
   }
 
-  const style = getComputedStyle(document.body);
-  const textColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-light" : "--bs-dark");
-  const bgColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-bg-color-alt" : "--bs-bg-color");
-  const options = {
-    width: Math.min(1050, window.innerWidth * 0.90),
-    height: 500,
-    chartArea: {
-      left: 20,
-      top: 0,
-      width: "95%",
-      height: "85%",
-    },
-    legend: {
-      position: "none",
-    },
-    hAxis: {
-      slantedText: true,
-      slantedTextAngle: -60,
-      textStyle: {
-        color: textColor,
-      },
-    },
-    vAxis: {
-      gridlines: {
-        count: 2,
-      }
-    },
-    backgroundColor: bgColor,
-    histogram: {
-      bucketSize: 1,
-      maxNumBuckets: Math.min(50, results.length),
-    },
-  };
-  buildTable(heading, null, headers, rows, (plotContainer) => {
-    const chart = new google.visualization.Histogram(plotContainer);
-    const dataTable = google.visualization.arrayToDataTable(data);
-    chart.draw(dataTable, options);
-  });
+  const plotContainer = getHistogram(data);
+  renderPage(heading, null, headers, rows, plotContainer);
 }
 
 // ---------------------------------------------------------
-function showLevel({id, mode}) {
+function showLevel({id, mode, entries=100}) {
   mode = mode || 'sum';
   const modes = ["sum", "gate", "delay", "tick"]
   const mode_id = modes.indexOf(mode);
@@ -557,7 +560,7 @@ function showLevel({id, mode}) {
   document.title = "TC Leaderboard - " + level_name;
   const heading = "Leaderboard for " + level_name;
   const bookmark = createBookmark(id)[0];
-  const headers = ["Player", "Place", "Type", "gate", "delay", "tick", "sum"];
+  const headers = ["Player", "Place", "gate", "delay", "tick", "sum"];
   for (header_mode of modes) {
     if (header_mode != mode && modes.indexOf(header_mode) in levels[id]) {
       headers[headers.indexOf(header_mode)] = {
@@ -568,51 +571,18 @@ function showLevel({id, mode}) {
   }
   const rows = [];
 
-  let board_sort;
-  if (mode == 'sum') {
-    // Sort solvers by lowest sum
-    board_sort = ([x, a], [y, b]) => a.sum - b.sum;
-  } else if (mode == 'gate') {
-    // Sort solvers by lowest gate, then sum
-    board_sort = ([x, a], [y, b]) => a.gate - b.gate || a.sum - b.sum;
-  } else if (mode == 'delay') {
-    // Sort solvers by lowest delay, then sum
-    board_sort = ([x, a], [y, b]) => a.delay - b.delay || a.sum - b.sum;
-  } else if (mode == 'tick') {
-    // Sort solvers by lowest tick, then sum
-    board_sort = ([x, a], [y, b]) => a.tick - b.tick || a.sum - b.sum;
-  }
+  let board_sort = ([x, a], [y, b]) => a[mode] - b[mode] || a.sum - b.sum;
   const sorted_solvers = Object.entries(levels[id][mode_id]).sort(board_sort);
 
-  let solves = 0;
-  let place = 1;
-  let placed_solves = 0;
   const bookmarks = readBookmarks();
   const ticksScored =
     metadata[id].scored &&
     metadata[id].arch;
-  for (const s in sorted_solvers) {
-    if (++solves > 100) break; // Only show 100 results
-
+  for (const s in sorted_solvers.slice(0, entries)) {
+    const place = parseInt(s) + 1;
     const [solver_id, solver] = sorted_solvers[s];
-    placed = metadata[id].version == solver.version;
-    if (placed) {
-      placed_solves++;
-    }
     const solver_name = playerName(solver_id);
-    const gate = solver.gate;
-    const delay = solver.delay;
-    const tick = ticksScored ? solver.tick : "-";
-    const sum = solver.sum;
-    const score_type = (placed ? "Best " : "Legacy ") + mode;
 
-    if (s > 0) {
-      const [solver_id_above, solver_above] = sorted_solvers[s - 1];
-      const sum_above = solver_above.sum;
-      if (sum != sum_above) {
-        place = placed_solves;
-      }
-    }
     const player = {
       href: "#" + encodeParams({other:solver_id}),
       text: solver_name,
@@ -622,34 +592,23 @@ function showLevel({id, mode}) {
     }
     const row = [
       player,
-      placed ? placeMedal(place) : "-",
-      score_type,
-      gate,
-      delay,
-      tick,
-      sum,
+      placeMedal(place),
+      solver.gate,
+      solver.delay,
+      ticksScored ? solver.tick : "-",
+      solver.sum,
     ];
     rows.push(row);
   }
   const p90 = sorted_solvers[Math.floor(sorted_solvers.length * 0.90)];
   const data = [["solver", mode]];
-  let board_metric;
-  if (mode == 'sum') {
-    board_metric = s => s.sum;
-  } else if (mode == 'gate') {
-    board_metric = s => s.gate;
-  } else if (mode == 'delay') {
-    board_metric = s => s.delay;
-  } else if (mode == 'tick') {
-    board_metric = s => s.tick;
-  }
-  const first = board_metric(sorted_solvers[0][1]);
-  const p90m = board_metric(p90[1]);
+  const first = sorted_solvers[0][1][mode];
+  const p90m = p90[1][mode];
   const limit = (p90m == first) ? 99999 : Math.min(99999, p90m / 0.90);
   for (const s in sorted_solvers) {
     const [solver_id, solver] = sorted_solvers[s];
     const solver_name = playerName(solver_id);
-    const metric = board_metric(solver);
+    const metric = solver[mode];
     if (metric >= limit) break;
     data.push([
       solver_name,
@@ -657,44 +616,8 @@ function showLevel({id, mode}) {
     ]);
   }
 
-  const style = getComputedStyle(document.body);
-  const textColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-light" : "--bs-dark");
-  const bgColor = style.getPropertyValue(darkmode.inDarkMode ? "--bs-bg-color-alt" : "--bs-bg-color");
-  const options = {
-    width: Math.min(1050, window.innerWidth * 0.90),
-    height: 500,
-    chartArea: {
-      left: 20,
-      top: 0,
-      width: "95%",
-      height: "85%",
-    },
-    legend: {
-      position: "none"
-    },
-    hAxis: {
-      slantedText: true,
-      slantedTextAngle: -60,
-      textStyle: {
-        color: textColor,
-      },
-    },
-    vAxis: {
-      gridlines: {
-        count: 2
-      }
-    },
-    backgroundColor: bgColor,
-    histogram: {
-      bucketSize: 1,
-      maxNumBuckets: Math.min(50, sorted_solvers.length),
-    },
-  };
-  buildTable(heading, bookmark, headers, rows, (plotContainer) => {
-    const chart = new google.visualization.Histogram(plotContainer);
-    const dataTable = google.visualization.arrayToDataTable(data);
-    chart.draw(dataTable, options);
-  });
+  const plotContainer = getHistogram(data)
+  renderPage(heading, bookmark, headers, rows, plotContainer);
 }
 
 // ---------------------------------------------------------
@@ -781,129 +704,70 @@ function showPlayer({id}) {
       sum
     ]);
   }
+  const container = $('<div></div>');
+  $(`<div><img class="rounded" src="https://turingcomplete.game/avatars/${id}.jpg"></div>`)
+    .appendTo(container);
 
-  buildTable(heading, bookmark, headers, rows, (container) => {
-    const div = document.createElement("div");
-    const img = document.createElement("img");
-    img.classList.add('rounded');
-    img.src = "https://turingcomplete.game/avatars/" + id + ".jpg";
-    div.appendChild(img);
-    container.appendChild(div);
+  const medalsText = Object.entries(medals)
+    .filter(([place, count]) => count > 0)
+    .map(([place, count]) => `${place == 4 ? "\u2705" : place == 5 ? "\u{1F7E8}" : placeMedal(place)}x${count}`)
+    .join(' ');
+  $(`<div>${medalsText}</div>`)
+    .appendTo(container);
 
-    const medalsDiv = document.createElement("div");
-    const divText = document.createTextNode(Object.entries(medals)
-      .filter(([place, count]) => count > 0)
-      .map(([place, count]) => `${place == 4 ? "\u2705" : place == 5 ? "\u{1F7E8}" : placeMedal(place)}x${count}`)
-      .join(' '));
-    medalsDiv.appendChild(divText);
-    container.appendChild(medalsDiv);
+  $(`<a href="https://turingcomplete.game/profile/${id}">${player_name}'s Profile [turingcomplete.game]</a>`)
+    .appendTo(container);
 
-    const link = document.createElement("a");
-    link.href = "https://turingcomplete.game/profile/" + id;
-    const player_name = playerName(id);
-    const linkText = document.createTextNode(player_name + "'s Profile [turingcomplete.game]");
-    link.appendChild(linkText);
-    container.appendChild(link);
-  });
+  renderPage(heading, bookmark, headers, rows, container);
 }
 
 // ---------------------------------------------------------
-function buildTable(heading, bookmark, headers, rows, extra) {
-  const title = document.createElement("h2");
-  const titleText = document.createTextNode(heading);
-  title.appendChild(titleText);
-  if (bookmark) title.appendChild(bookmark);
+function textOrLink(obj) {
+  if (["string", "number"].includes(typeof obj)) return obj;
+  if ("href" in obj) return $(`<a href="${obj.href}">${obj.text}</a>`)
+  return obj.text;
+}
 
-  let extraContainer = null;
-  if (extra) {
-    extraContainer = document.createElement("div");
-    extra(extraContainer);
+function renderTable(headers, rows) {
+  const tblBody = $('#main_table > tbody').empty();
+  const tblHead = $('#main_table > thead').empty();
+
+  const row = $('<tr></tr>');
+  for (const h of headers) {
+    $(`<th class="text-center collumn_${h?.text||h}"></th>`)
+      .append(textOrLink(h))
+      .appendTo(row);
   }
-
-  const tbl = document.createElement("table");
-  tbl.className = "table table-striped w-auto";
-  const tblBody = document.createElement("tbody");
-  const tblHead = document.createElement("thead");
-  tblHead.className = "sticky-top";
-
-  const row = document.createElement("tr");
-  const separators = headers
-    .map(e => e?.text || e)
-    .map((e, i) => [e, i])
-    .filter(([e, i]) => ["gate", "sum"].includes(e))
-    .map(([e, i]) => i)
-    .map(String);
-
-  for (const h in headers) {
-    const header = document.createElement("th");
-    header.classList.add('text-center');
-    if (separators.includes(h)) {
-      header.classList.add("border-start");
-    }
-    if (["string", "number"].includes(typeof headers[h])) {
-      const headerText = document.createTextNode(headers[h]);
-      header.appendChild(headerText);
-    } else {
-      const headerText = document.createTextNode(headers[h].text);
-      if ("href" in headers[h]) {
-        const a = document.createElement("a");
-        a.href = headers[h].href;
-        a.appendChild(headerText);
-        header.appendChild(a);
-      } else {
-        header.appendChild(headerText);
-      }
-    }
-    row.appendChild(header);
-  }
-
-  tblHead.appendChild(row);
-  tbl.appendChild(tblHead);
+  tblHead.append(row);
 
   for (const r in rows) {
     const rows_r = rows[r];
-    const row = document.createElement("tr");
+    const row = $('<tr></tr>');
 
     for (const c in rows_r) {
       const rows_rc = rows_r[c];
-      const cell = document.createElement("td");
-      if (separators.includes(c)) {
-        cell.classList.add("border-start");
-      }
+      const cell = $(`<td class="collumn_${headers[c]?.text||headers[c]}"></td>`);
       if (["string", "number"].includes(typeof rows_rc)) {
-        const cellText = document.createTextNode(rows_rc);
-        cell.appendChild(cellText);
+        cell.append(rows_rc);
         if (typeof rows_rc == "number" || [...rows_rc].length == 1 && /^\p{Emoji}$/u.test(rows_rc)) {
-          cell.classList.add('text-end');
+          cell.addClass('text-end');
         }
       } else {
-        const cellText = document.createTextNode(rows_rc.text);
-        if ("href" in rows_rc) {
-          const a = document.createElement("a");
-          a.href = rows_rc.href;
-          a.appendChild(cellText);
-          cell.appendChild(a);
-        } else {
-          cell.appendChild(cellText);
-        }
-        cell.appendChild(document.createTextNode(" "));
+        cell.append(textOrLink(rows_rc));
         if ("img" in rows_rc) {
-          const i = document.createElement("i");
-          i.className = rows_rc.img;
-          cell.appendChild(i);
+          cell.append(" ");
+          $(`<i class="${rows_rc.img}"></i>`).appendTo(cell);
         }
       }
-      row.appendChild(cell);
+      row.append(cell);
     }
 
-    tblBody.appendChild(row);
+    tblBody.append(row);
   }
+}
 
-  tbl.appendChild(tblBody);
-  if (extraContainer) {
-    document.getElementById("content").replaceChildren(title, extraContainer, tbl);
-  } else {
-    document.getElementById("content").replaceChildren(title, tbl);
-  }
-  tbl.setAttribute("border", "2");
+function renderPage(heading, bookmark, headers, rows, extra='') {
+  $('#title').html(heading).append(bookmark);
+  $('#extra').html(extra);
+  renderTable(headers, rows);
 }
